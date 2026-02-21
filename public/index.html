@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ஹோட்டல் ஆர்டர் - கவுண்டர்</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        /* Clear Button Styles */
+        .clear-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-left: 10px;
+            transition: all 0.3s;
+        }
+        
+        .clear-btn:hover {
+            background: #c0392b;
+            transform: scale(1.05);
+        }
+        
+        .clear-all-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .clear-all-btn:hover {
+            background: #c0392b;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(231,76,60,0.3);
+        }
+        
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .order-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .completed-badge {
+            background: #27ae60;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- 🔐 Page Load Security Check -->
+    <script>
+        (function() {
+            const user = localStorage.getItem('hotelUser');
+            if (!user) {
+                window.location.href = '/login';
+            }
+        })();
+    </script>
+
+    <div class="container">
+        <!-- Logout Button -->
+        <button onclick="handleLogout()" class="logout-btn" title="வெளியேறு">
+            <span>🚪</span> வெளியேறு
+        </button>
+
+        <!-- Logout Script -->
+        <script type="module">
+            import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+            import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+            import firebaseConfig from '/firebase-config.js';
+            
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            
+            window.handleLogout = async function() {
+                try {
+                    await signOut(auth);
+                    localStorage.removeItem('hotelUser');
+                    window.location.href = '/login';
+                } catch (error) {
+                    console.error('Logout error:', error);
+                    alert('❌ வெளியேற முடியவில்லை: ' + error.message);
+                }
+            };
+        </script>
+
+        <div class="header">
+            <h1>🏨 ஹோட்டல் ஆர்டர் சிஸ்டம்</h1>
+            <p>கவுண்டர் - புதிய ஆர்டர் எடுக்க</p>
+        </div>
+
+        <div class="grid">
+            <!-- Order Form -->
+            <div class="card">
+                <h2>📝 புதிய ஆர்டர்</h2>
+                
+                <div class="form-group">
+                    <label>வாடிக்கையாளர் பெயர்:</label>
+                    <input type="text" id="customerName" class="form-control" placeholder="பெயர் (விருப்பம்)">
+                </div>
+
+                <div class="form-group">
+                    <label>மேஜை எண்:</label>
+                    <input type="text" id="tableNo" class="form-control" placeholder="மேஜை எண்">
+                </div>
+
+                <div class="form-group">
+                    <label>ஐட்டம் தேர்ந்தெடு:</label>
+                    <select id="itemSelect" class="form-control">
+                        <option value="பராட்டா">🫓 பராட்டா - ₹50</option>
+                        <option value="டீ">☕ டீ - ₹20</option>
+                        <option value="ஜூஸ்">🥤 ஜூஸ் - ₹80</option>
+                        <option value="ரைஸ்">🍚 ரைஸ் - ₹120</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>அளவு:</label>
+                    <input type="number" id="quantity" class="form-control" value="1" min="1" max="10">
+                </div>
+
+                <button onclick="sendOrder()" class="btn btn-primary" style="width: 100%;">
+                    🚀 ஆர்டர் அனுப்பு
+                </button>
+            </div>
+
+            <!-- Active Orders -->
+            <div class="card">
+                <h2>🔄 நிலுவையில் உள்ள ஆர்டர்கள்</h2>
+                <div id="activeOrders">
+                    <p>ஆர்டர்கள் ஏதுமில்லை</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- All Orders Display with Clear All Button -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>📋 அனைத்து ஆர்டர்களும்</h2>
+                <button onclick="clearAllCompletedOrders()" class="clear-all-btn" id="clearAllBtn" style="display: none;">
+                    🗑️ அனைத்து முடிந்த ஆர்டர்களையும் நீக்கு
+                </button>
+            </div>
+            <div id="ordersList"></div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK for Orders -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getDatabase, ref, push, onValue, query, orderByChild, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        import firebaseConfig from '/firebase-config.js';
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Send Order Function
+        window.sendOrder = async function() {
+            const customerName = document.getElementById('customerName').value || 'வாடிக்கையாளர்';
+            const tableNo = document.getElementById('tableNo').value || '0';
+            const item = document.getElementById('itemSelect').value;
+            const quantity = document.getElementById('quantity').value;
+
+            if (!item || quantity < 1) {
+                alert('தயவுசெய்து சரியான தகவலை உள்ளிடவும்');
+                return;
+            }
+
+            const orderRef = ref(db, 'orders');
+            const newOrder = {
+                customerName,
+                tableNo,
+                item,
+                quantity: parseInt(quantity),
+                status: 'new',
+                timestamp: Date.now(),
+                station: item === 'பராட்டா' ? 'parotta' : 
+                        item === 'டீ' ? 'tea' :
+                        item === 'ஜூஸ்' ? 'juice' : 'rice'
+            };
+
+            try {
+                await push(orderRef, newOrder);
+                showNotification('✅ ஆர்டர் வெற்றிகரமாக அனுப்பப்பட்டது!');
+                
+                // Clear form
+                document.getElementById('customerName').value = '';
+                document.getElementById('tableNo').value = '';
+                document.getElementById('quantity').value = '1';
+            } catch (error) {
+                console.error(error);
+                showNotification('❌ பிழை: ' + error.message, 'error');
+            }
+        };
+
+        // Real-time listener for all orders
+        const ordersRef = ref(db, 'orders');
+        const recentOrdersQuery = query(ordersRef, orderByChild('timestamp'));
+
+        onValue(recentOrdersQuery, (snapshot) => {
+            const orders = [];
+            snapshot.forEach(childSnapshot => {
+                orders.push({
+                    id: childSnapshot.key,
+                    ...childSnapshot.val()
+                });
+            });
+
+            // Sort by timestamp (newest first)
+            orders.sort((a, b) => b.timestamp - a.timestamp);
+
+            // Update UI
+            updateOrdersDisplay(orders);
+            updateActiveOrders(orders);
+            
+            // Show/hide Clear All button
+            const completedOrders = orders.filter(o => o.status === 'completed');
+            const clearAllBtn = document.getElementById('clearAllBtn');
+            if (clearAllBtn) {
+                clearAllBtn.style.display = completedOrders.length > 0 ? 'inline-flex' : 'none';
+            }
+        });
+
+        // Update all orders display with Clear button for completed orders
+        function updateOrdersDisplay(orders) {
+            const ordersList = document.getElementById('ordersList');
+            
+            if (orders.length === 0) {
+                ordersList.innerHTML = '<p>இதுவரை ஆர்டர்கள் இல்லை</p>';
+                return;
+            }
+
+            let html = '<div class="grid">';
+            orders.slice(0, 20).forEach(order => {
+                const time = new Date(order.timestamp).toLocaleTimeString('ta-IN');
+                const statusColor = getStatusColor(order.status);
+                
+                html += `
+                    <div class="order-card" style="border-left-color: ${statusColor}">
+                        <div class="order-header">
+                            <div>
+                                <span class="order-item">${order.item} (${order.quantity})</span>
+                                <span class="order-status status-${order.status}">${order.status}</span>
+                            </div>
+                            <div class="order-actions">
+                                ${order.status === 'completed' ? 
+                                    `<button onclick="clearSingleOrder('${order.id}')" class="clear-btn" title="இந்த ஆர்டரை நீக்கு">
+                                        🗑️ Clear
+                                    </button>` : 
+                                    ''
+                                }
+                            </div>
+                        </div>
+                        <p><strong>👤 ${order.customerName}</strong> | மேஜை ${order.tableNo}</p>
+                        <p><small>⏰ ${time}</small></p>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            ordersList.innerHTML = html;
+        }
+
+        // Update active orders (not completed)
+        function updateActiveOrders(orders) {
+            const active = orders.filter(o => o.status !== 'completed');
+            const activeDiv = document.getElementById('activeOrders');
+            
+            if (active.length === 0) {
+                activeDiv.innerHTML = '<p>✅ அனைத்து ஆர்டர்களும் முடிந்துவிட்டன</p>';
+                return;
+            }
+
+            let html = '';
+            active.slice(0, 5).forEach(order => {
+                const time = new Date(order.timestamp).toLocaleTimeString('ta-IN');
+                
+                html += `
+                    <div class="order-card">
+                        <div class="order-header">
+                            <span class="order-item">${order.item} (${order.quantity})</span>
+                            <span class="order-status status-${order.status}">${order.status}</span>
+                        </div>
+                        <p><strong>${order.customerName}</strong> | மேஜை ${order.tableNo}</p>
+                        <p><small>⏰ ${time}</small></p>
+                    </div>
+                `;
+            });
+            
+            if (active.length > 5) {
+                html += `<p style="text-align:center;">+ ${active.length - 5} ஆர்டர்கள் மேலும்</p>`;
+            }
+            
+            activeDiv.innerHTML = html;
+        }
+
+        // ✅ NEW FUNCTION: Clear single completed order
+        window.clearSingleOrder = async function(orderId) {
+            if (!confirm('இந்த ஆர்டரை நிச்சயமாக நீக்கவா?')) {
+                return;
+            }
+            
+            try {
+                const orderRef = ref(db, `orders/${orderId}`);
+                await remove(orderRef);
+                showNotification('✅ ஆர்டர் நீக்கப்பட்டது');
+            } catch (error) {
+                console.error('Error clearing order:', error);
+                showNotification('❌ பிழை: ' + error.message, 'error');
+            }
+        };
+
+        // ✅ NEW FUNCTION: Clear all completed orders
+        window.clearAllCompletedOrders = async function() {
+            const ordersRef = ref(db, 'orders');
+            const snapshot = await getOrdersSnapshot();
+            
+            if (!snapshot.exists()) {
+                showNotification('❌ நீக்க ஆர்டர்கள் இல்லை', 'error');
+                return;
+            }
+            
+            const completedOrders = [];
+            snapshot.forEach(childSnapshot => {
+                const order = childSnapshot.val();
+                if (order.status === 'completed') {
+                    completedOrders.push(childSnapshot.key);
+                }
+            });
+            
+            if (completedOrders.length === 0) {
+                showNotification('✅ முடிந்த ஆர்டர்கள் இல்லை', 'success');
+                return;
+            }
+            
+            if (!confirm(`மொத்தம் ${completedOrders.length} முடிந்த ஆர்டர்களை நிச்சயமாக நீக்கவா?`)) {
+                return;
+            }
+            
+            try {
+                // Delete each completed order
+                for (const orderId of completedOrders) {
+                    const orderRef = ref(db, `orders/${orderId}`);
+                    await remove(orderRef);
+                }
+                showNotification(`✅ ${completedOrders.length} ஆர்டர்கள் நீக்கப்பட்டன`);
+            } catch (error) {
+                console.error('Error clearing orders:', error);
+                showNotification('❌ பிழை: ' + error.message, 'error');
+            }
+        };
+
+        // Helper function to get orders snapshot
+        async function getOrdersSnapshot() {
+            const ordersRef = ref(db, 'orders');
+            const { get } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js");
+            return get(ordersRef);
+        }
+    </script>
+
+    <!-- Helper functions -->
+    <script>
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.style.background = type === 'success' ? '#27ae60' : '#e74c3c';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+        }
+
+        function getStatusColor(status) {
+            const colors = {
+                'new': '#3498db',
+                'received': '#f39c12',
+                'preparing': '#e67e22',
+                'ready': '#27ae60',
+                'completed': '#95a5a6'
+            };
+            return colors[status] || '#95a5a6';
+        }
+    </script>
+</body>
+</html>

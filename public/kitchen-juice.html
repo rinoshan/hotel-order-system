@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ஜூஸ் ஸ்டேஷன் - ஹோட்டல் ஆர்டர்</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <!-- 🔐 Page Load Security Check -->
+    <script>
+        (function() {
+            const user = localStorage.getItem('hotelUser');
+            if (!user) {
+                window.location.href = '/login';
+            }
+        })();
+    </script>
+
+    <div class="container">
+        <!-- Logout Button -->
+        <button onclick="handleLogout()" class="logout-btn" title="வெளியேறு">
+            <span>🚪</span> வெளியேறு
+        </button>
+
+        <!-- Logout Script (Updated with localStorage removal) -->
+        <script type="module">
+            import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+            import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+            import firebaseConfig from '/firebase-config.js';
+            
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            
+            window.handleLogout = async function() {
+                try {
+                    await signOut(auth);
+                    localStorage.removeItem('hotelUser');  // ✅ Clear user data
+                    window.location.href = '/login';
+                } catch (error) {
+                    console.error('Logout error:', error);
+                    alert('❌ வெளியேற முடியவில்லை: ' + error.message);
+                }
+            };
+        </script>
+
+        <!-- Header -->
+        <div class="header">
+            <h1>🥤 ஜூஸ் ஸ்டேஷன்</h1>
+            <p>பழச்சாறுகள் & ஸ்மூத்திகள் - ரியல்-டைம் ஆர்டர் மேலாண்மை</p>
+        </div>
+
+        <!-- Navigation -->
+        <div class="kitchen-nav">
+            <a href="/kitchen">🏠 முகப்பு</a>
+            <a href="/kitchen/parotta">🫓 பராட்டா</a>
+            <a href="/kitchen/tea">☕ டீ</a>
+            <a href="/kitchen/juice" class="active">🥤 ஜூஸ்</a>
+            <a href="/kitchen/rice">🍚 ரைஸ்</a>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>🆕 புதிய ஆர்டர்கள்</h3>
+                <h2 id="newCount">0</h2>
+            </div>
+            <div class="stat-card">
+                <h3>⚡ தயாரிப்பில்</h3>
+                <h2 id="preparingCount">0</h2>
+            </div>
+            <div class="stat-card">
+                <h3>✅ ரெடி</h3>
+                <h2 id="readyCount">0</h2>
+            </div>
+            <div class="stat-card">
+                <h3>📊 மொத்தம்</h3>
+                <h2 id="totalCount">0</h2>
+            </div>
+        </div>
+
+        <!-- Orders Grid -->
+        <div class="grid">
+            <div class="card">
+                <div class="station-header" style="background: #3498db;">
+                    <h3>🆕 புதிய ஆர்டர்கள்</h3>
+                </div>
+                <div id="newOrders" class="orders-container">
+                    <div class="loading">ஆர்டர்கள் வருகின்றன...</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="station-header" style="background: #f39c12;">
+                    <h3>⚡ தயாரிப்பில் உள்ளவை</h3>
+                </div>
+                <div id="preparingOrders" class="orders-container">
+                    <div class="loading">ஆர்டர்கள் வருகின்றன...</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="station-header" style="background: #27ae60;">
+                    <h3>✅ தயாரானவை</h3>
+                </div>
+                <div id="readyOrders" class="orders-container">
+                    <div class="loading">ஆர்டர்கள் வருகின்றன...</div>
+                </div>
+            </div>
+        </div>
+
+        <audio id="notificationSound" preload="auto">
+            <source src="https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3" type="audio/mpeg">
+        </audio>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        import firebaseConfig from '/firebase-config.js';
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        
+        const notificationSound = document.getElementById('notificationSound');
+        let previousOrders = [];
+
+        if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+
+        const ordersRef = ref(db, 'orders');
+        
+        onValue(ordersRef, (snapshot) => {
+            const orders = [];
+            snapshot.forEach(childSnapshot => {
+                orders.push({
+                    id: childSnapshot.key,
+                    ...childSnapshot.val()
+                });
+            });
+
+            // Filter for juice station
+            const stationOrders = orders.filter(o => 
+                o.station === 'juice' || 
+                o.item === 'ஜூஸ்' || 
+                o.item.includes('Juice') ||
+                o.item.includes('Smoothie')
+            );
+
+            if (previousOrders.length > 0) {
+                const newOrders = stationOrders.filter(order => 
+                    !previousOrders.some(prev => prev.id === order.id) &&
+                    order.status === 'new'
+                );
+                
+                if (newOrders.length > 0) {
+                    notificationSound.play().catch(e => console.log('Audio failed'));
+                    
+                    if (Notification.permission === 'granted') {
+                        newOrders.forEach(order => {
+                            new Notification('🥤 புதிய ஜூஸ் ஆர்டர்!', {
+                                body: `${order.item} - ${order.quantity} (மேஜை ${order.tableNo || '0'})`,
+                                icon: 'https://cdn-icons-png.flaticon.com/512/1046/1046784.png'
+                            });
+                        });
+                    }
+                }
+            }
+            previousOrders = stationOrders;
+
+            const newOrders = stationOrders.filter(o => o.status === 'new');
+            const preparingOrders = stationOrders.filter(o => o.status === 'received' || o.status === 'preparing');
+            const readyOrders = stationOrders.filter(o => o.status === 'ready');
+            
+            document.getElementById('newCount').textContent = newOrders.length;
+            document.getElementById('preparingCount').textContent = preparingOrders.length;
+            document.getElementById('readyCount').textContent = readyOrders.length;
+            document.getElementById('totalCount').textContent = stationOrders.length;
+
+            updateOrdersColumn('newOrders', newOrders, 'received', '📥 எடுத்துக்கொள்');
+            updateOrdersColumn('preparingOrders', preparingOrders, 'ready', '✅ ரெடி');
+            updateOrdersColumn('readyOrders', readyOrders, 'completed', '🎯 முடிந்தது');
+        });
+
+        function updateOrdersColumn(elementId, orders, nextStatus, buttonText) {
+            const container = document.getElementById(elementId);
+            
+            if (!orders || orders.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 30px; color: #7f8c8d;">
+                        <p style="font-size: 3rem; margin: 0;">🥤</p>
+                        <p>ஆர்டர்கள் இல்லை</p>
+                    </div>
+                `;
+                return;
+            }
+
+            orders.sort((a, b) => a.timestamp - b.timestamp);
+
+            let html = '';
+            orders.forEach(order => {
+                const time = new Date(order.timestamp).toLocaleTimeString('ta-IN');
+                const waitTime = calculateTimeDiff(order.timestamp);
+                
+                html += `
+                    <div class="order-card" style="border-left-color: #f39c12;">
+                        <div class="order-header">
+                            <span class="order-item">🥤 ${order.item} (${order.quantity})</span>
+                            <span class="order-status status-${order.status}">${order.status}</span>
+                        </div>
+                        <p><strong>👤 ${order.customerName || 'வாடிக்கையாளர்'}</strong> | மேஜை ${order.tableNo || '0'}</p>
+                        <p><small>⏰ ${time}</small></p>
+                        <div class="timer">⏱️ ${waitTime}</div>
+                        ${order.status !== 'completed' ? `
+                            <button onclick="updateOrderStatus('${order.id}', '${nextStatus}')" 
+                                    class="btn btn-primary" style="width:100%; margin-top:10px;">
+                                ${buttonText}
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function calculateTimeDiff(timestamp) {
+            const diff = Math.floor((Date.now() - timestamp) / 1000);
+            const mins = Math.floor(diff / 60);
+            const secs = diff % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        window.updateOrderStatus = async function(orderId, newStatus) {
+            try {
+                const orderRef = ref(db, `orders/${orderId}`);
+                const updates = { status: newStatus };
+                
+                if (newStatus === 'received') updates.receivedTime = Date.now();
+                else if (newStatus === 'ready') updates.readyTime = Date.now();
+                else if (newStatus === 'completed') updates.completedTime = Date.now();
+                
+                await update(orderRef, updates);
+                alert('✅ Status updated!');
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
+        };
+    </script>
+</body>
+</html>

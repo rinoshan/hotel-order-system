@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ஹோட்டல் ஆர்டர் - கிச்சன்</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <!-- 🔐 Page Load Security Check -->
+    <script>
+        (function() {
+            const user = localStorage.getItem('hotelUser');
+            if (!user) {
+                window.location.href = '/login';
+            }
+        })();
+    </script>
+
+    <div class="container">
+        <!-- Logout Button -->
+        <button onclick="handleLogout()" class="logout-btn" title="வெளியேறு">
+            <span>🚪</span> வெளியேறு
+        </button>
+
+        <!-- Logout Script -->
+        <script type="module">
+            import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+            import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+            import firebaseConfig from '/firebase-config.js';
+            
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            
+            window.handleLogout = async function() {
+                try {
+                    await signOut(auth);
+                    localStorage.removeItem('hotelUser');
+                    window.location.href = '/login';
+                } catch (error) {
+                    console.error('Logout error:', error);
+                    alert('❌ வெளியேற முடியவில்லை: ' + error.message);
+                }
+            };
+        </script>
+
+        <div class="header">
+            <h1>👨‍🍳 கிச்சன் கண்ட்ரோல் பேனல்</h1>
+            <p>அனைத்து ஸ்டேஷன்களின் நிலவரம்</p>
+        </div>
+
+        <!-- ✅ FIXED: Kitchen Navigation - CORRECT links -->
+        <div class="kitchen-nav">
+            <a href="/kitchen-dashboard" class="active">🏠 முகப்பு</a>
+            <a href="/kitchen/parotta">🫓 பராட்டா</a>
+            <a href="/kitchen/tea">☕ டீ</a>
+            <a href="/kitchen/juice">🥤 ஜூஸ்</a>
+            <a href="/kitchen/rice">🍚 ரைஸ்</a>
+        </div>
+
+        <!-- All Stations Display -->
+        <div class="grid">
+            <!-- Parotta Station -->
+            <div class="card station-parotta">
+                <div class="station-header" style="background: #d35400;">
+                    <h3>🫓 பராட்டா ஸ்டேஷன்</h3>
+                </div>
+                <div id="parottaOrders">
+                    <p>ஆர்டர்கள் இல்லை</p>
+                </div>
+            </div>
+
+            <!-- Tea Station -->
+            <div class="card station-tea">
+                <div class="station-header" style="background: #16a085;">
+                    <h3>☕ டீ ஸ்டேஷன்</h3>
+                </div>
+                <div id="teaOrders">
+                    <p>ஆர்டர்கள் இல்லை</p>
+                </div>
+            </div>
+
+            <!-- Juice Station -->
+            <div class="card station-juice">
+                <div class="station-header" style="background: #f39c12;">
+                    <h3>🥤 ஜூஸ் ஸ்டேஷன்</h3>
+                </div>
+                <div id="juiceOrders">
+                    <p>ஆர்டர்கள் இல்லை</p>
+                </div>
+            </div>
+
+            <!-- Rice Station -->
+            <div class="card station-rice">
+                <div class="station-header" style="background: #27ae60;">
+                    <h3>🍚 ரைஸ் ஸ்டேஷன்</h3>
+                </div>
+                <div id="riceOrders">
+                    <p>ஆர்டர்கள் இல்லை</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        import firebaseConfig from '/firebase-config.js';
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const ordersRef = ref(db, 'orders');
+        
+        onValue(ordersRef, (snapshot) => {
+            const orders = [];
+            snapshot.forEach(childSnapshot => {
+                orders.push({
+                    id: childSnapshot.key,
+                    ...childSnapshot.val()
+                });
+            });
+
+            // Filter by station (excluding completed)
+            const parottaOrders = orders.filter(o => o.station === 'parotta' && o.status !== 'completed');
+            const teaOrders = orders.filter(o => o.station === 'tea' && o.status !== 'completed');
+            const juiceOrders = orders.filter(o => o.station === 'juice' && o.status !== 'completed');
+            const riceOrders = orders.filter(o => o.station === 'rice' && o.status !== 'completed');
+
+            // Update each station
+            updateStation('parottaOrders', parottaOrders);
+            updateStation('teaOrders', teaOrders);
+            updateStation('juiceOrders', juiceOrders);
+            updateStation('riceOrders', riceOrders);
+        });
+
+        function updateStation(elementId, orders) {
+            const container = document.getElementById(elementId);
+            
+            if (orders.length === 0) {
+                container.innerHTML = '<p style="text-align:center; padding:20px;">✅ ஆர்டர்கள் இல்லை</p>';
+                return;
+            }
+
+            let html = '';
+            orders.slice(0, 3).forEach(order => {  // Show only latest 3
+                const time = new Date(order.timestamp).toLocaleTimeString('ta-IN');
+                html += `
+                    <div class="order-card">
+                        <div class="order-header">
+                            <span class="order-item">${order.item} (${order.quantity})</span>
+                            <span class="order-status status-${order.status}">${order.status}</span>
+                        </div>
+                        <p><strong>👤 ${order.customerName}</strong> | மேஜை ${order.tableNo}</p>
+                        <p><small>⏰ ${time}</small></p>
+                        <a href="/kitchen/${order.station}" class="btn btn-primary" style="width:100%; margin-top:10px; text-decoration:none; display:block; text-align:center;">
+                            இங்கே சென்று பார்க்க
+                        </a>
+                    </div>
+                `;
+            });
+            
+            if (orders.length > 3) {
+                html += `<p style="text-align:center;">+ ${orders.length - 3} ஆர்டர்கள் மேலும்</p>`;
+            }
+            
+            container.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
